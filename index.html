@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bayessche Optimierung — Interaktive Demo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0F172A; --panel: #1E293B; --border: #334155;
+    --primary: #3B82F6; --secondary: #10B981; --accent: #F59E0B;
+    --danger: #EF4444; --text: #F8FAFC; --muted: #94A3B8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* Nav */
+  .nav { display: flex; gap: 0; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+  .nav-btn { flex: 1; padding: 14px 10px; border: none; background: transparent; color: var(--muted); font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; border-bottom: 3px solid transparent; }
+  .nav-btn:hover { color: var(--text); background: rgba(59,130,246,0.08); }
+  .nav-btn.active { color: var(--primary); border-bottom-color: var(--primary); background: rgba(59,130,246,0.05); }
+
+  /* Layout */
+  .page { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .page.active { display: block; }
+  h1 { font-size: 28px; margin-bottom: 6px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 24px; }
+
+  /* Controls */
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .control-group { background: var(--panel); border-radius: 10px; padding: 14px 16px; border: 1px solid var(--border); }
+  .control-group label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .control-group select, .control-group input[type=range] { width: 100%; }
+  select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 14px; cursor: pointer; }
+  select:focus { outline: none; border-color: var(--primary); }
+  input[type=range] { -webkit-appearance: none; height: 6px; border-radius: 3px; background: var(--border); outline: none; margin-top: 4px; }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--primary); cursor: pointer; border: 2px solid var(--text); }
+  .slider-value { text-align: right; font-size: 13px; color: var(--primary); font-weight: 700; margin-top: 4px; }
+
+  /* Metrics */
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .metric { background: var(--panel); border-radius: 10px; padding: 16px; text-align: center; border-left: 4px solid var(--primary); }
+  .metric-val { font-size: 26px; font-weight: 800; }
+  .metric-label { font-size: 11px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  /* Charts */
+  .chart-container { background: var(--panel); border-radius: 12px; padding: 16px; margin-bottom: 20px; border: 1px solid var(--border); position: relative; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  canvas { width: 100% !important; }
+
+  /* Checkbox */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+  .checkbox-row input { accent-color: var(--primary); width: 16px; height: 16px; }
+  .checkbox-row label { color: var(--muted); font-size: 13px; cursor: pointer; }
+
+  /* Theory */
+  .theory-card { background: var(--panel); border-radius: 10px; padding: 20px; margin-bottom: 16px; border: 1px solid var(--border); }
+  .theory-card h3 { color: var(--primary); margin-bottom: 10px; font-size: 18px; }
+  .theory-card p, .theory-card li { color: var(--muted); line-height: 1.7; font-size: 14px; }
+  .theory-card code { background: var(--bg); color: var(--accent); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  .formula-box { background: var(--bg); border-radius: 8px; padding: 14px; margin: 10px 0; font-family: 'Courier New', monospace; color: var(--accent); font-size: 14px; border-left: 3px solid var(--accent); }
+  .theory-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin: 16px 0; }
+  .af-card { background: var(--bg); border-radius: 8px; padding: 16px; border-top: 3px solid; }
+  .af-card h4 { margin-bottom: 6px; font-size: 15px; }
+  .af-card p { font-size: 12px; }
+
+  /* Footer */
+  .footer { text-align: center; padding: 30px; color: var(--border); font-size: 12px; }
+
+  @media (max-width: 768px) {
+    .chart-row { grid-template-columns: 1fr; }
+    .controls { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showPage('step')">🔍 Schritt für Schritt</button>
+  <button class="nav-btn" onclick="showPage('compare')">⚔️ Vergleich</button>
+  <button class="nav-btn" onclick="showPage('theory')">📖 Theorie</button>
+</nav>
+
+<!-- ═══════════════════ PAGE 1: STEP BY STEP ═══════════════════ -->
+<div id="page-step" class="page active">
+  <h1>Bayessche Optimierung — Schritt für Schritt</h1>
+  <p class="subtitle">Beobachte wie der Algorithmus die unbekannte Funktion Schritt für Schritt lernt</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Zielfunktion</label>
+      <select id="func-select" onchange="updateStep()">
+        <option value="branin">Branin (modifiziert)</option>
+        <option value="multimodal">Multimodal</option>
+        <option value="quadratic">Quadratisch + Sinus</option>
+        <option value="rastrigin">Rastrigin</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Acquisition Function</label>
+      <select id="acq-select" onchange="updateStep()">
+        <option value="ei">Expected Improvement (EI)</option>
+        <option value="ucb">Upper Confidence Bound (UCB)</option>
+        <option value="pi">Probability of Improvement (PI)</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Anzahl Schritte</label>
+      <input type="range" id="steps-slider" min="0" max="25" value="5" oninput="updateStep()">
+      <div class="slider-value" id="steps-val">5</div>
+    </div>
+    <div class="control-group">
+      <label>Length Scale</label>
+      <input type="range" id="ls-slider" min="5" max="100" value="20" oninput="updateStep()">
+      <div class="slider-value" id="ls-val">0.20</div>
+    </div>
+    <div class="control-group">
+      <label>Exploration (ξ / κ)</label>
+      <input type="range" id="xi-slider" min="0" max="100" value="5" oninput="updateStep()">
+      <div class="slider-value" id="xi-val">0.05</div>
+    </div>
+    <div class="control-group">
+      <label>Rauschen (α)</label>
+      <input type="range" id="noise-slider" min="1" max="100" value="1" oninput="updateStep()">
+      <div class="slider-value" id="noise-val">0.001</div>
+    </div>
+  </div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="show-true" checked onchange="updateStep()">
+    <label for="show-true">Wahre Funktion anzeigen (in der Praxis unbekannt!)</label>
+  </div>
+
+  <div class="metrics" id="step-metrics"></div>
+  <div class="chart-container"><canvas id="chart-gp"></canvas></div>
+  <div class="chart-container"><canvas id="chart-acq"></canvas></div>
+</div>
+
+<!-- ═══════════════════ PAGE 2: COMPARISON ═══════════════════ -->
+<div id="page-compare" class="page">
+  <h1>BO vs Random vs Grid Search</h1>
+  <p class="subtitle">Wer findet das Minimum mit dem geringsten Budget?</p>
+
+  <div class="controls">
+    <div class="control-group">
+      <label>Zielfunktion</label>
+      <select id="cmp-func" onchange="updateCompare()">
+        <option value="branin">Branin (modifiziert)</option>
+        <option value="multimodal" selected>Multimodal</option>
+        <option value="quadratic">Quadratisch + Sinus</option>
+        <option value="rastrigin">Rastrigin</option>
+      </select>
+    </div>
+    <div class="control-group">
+      <label>Evaluierungsbudget</label>
+      <input type="range" id="budget-slider" min="5" max="40" value="20" oninput="updateCompare()">
+      <div class="slider-value" id="budget-val">20</div>
+    </div>
+    <div class="control-group">
+      <label>Random Seed</label>
+      <input type="range" id="seed-slider" min="0" max="100" value="42" oninput="updateCompare()">
+      <div class="slider-value" id="seed-val">42</div>
+    </div>
+  </div>
+
+  <div class="metrics" id="cmp-metrics"></div>
+  <div class="chart-row">
+    <div class="chart-container"><canvas id="chart-cmp-bo"></canvas></div>
+    <div class="chart-container"><canvas id="chart-cmp-rand"></canvas></div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-container"><canvas id="chart-cmp-grid"></canvas></div>
+    <div class="chart-container"><canvas id="chart-cmp-conv"></canvas></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ PAGE 3: THEORY ═══════════════════ -->
+<div id="page-theory" class="page">
+  <h1>Theorie der Bayesschen Optimierung</h1>
+  <p class="subtitle">Kompakte Übersicht der wichtigsten Konzepte</p>
+
+  <div class="theory-card">
+    <h3>Das Problem</h3>
+    <p>Wir suchen das Minimum einer <strong>teuren Black-Box-Funktion</strong> f(x):</p>
+    <div class="formula-box">min f(x), wobei jede Auswertung von f(x) kostspielig ist</div>
+    <p>Kein Gradient verfügbar — nur Input → Output. Budget: typisch 10–50 Evaluierungen.</p>
+  </div>
+
+  <div class="theory-card">
+    <h3>Gaussian Process (GP)</h3>
+    <p>Das <strong>Surrogatmodell</strong> approximiert die unbekannte Funktion. Für jeden Punkt x liefert er:</p>
+    <div class="formula-box">μ(x) — Schätzung (Mittelwert) &nbsp;&nbsp;|&nbsp;&nbsp; σ(x) — Unsicherheit (Std.-Abweichung)</div>
+    <p>Der <strong>Kernel</strong> bestimmt die Glätte-Annahme. <code>Matérn (ν=2.5)</code> ist Standard in der Praxis.
+    Der <strong>Length Scale</strong> steuert, wie weit der Einfluss eines Datenpunkts reicht.</p>
+  </div>
+
+  <div class="theory-card">
+    <h3>Acquisition Functions</h3>
+    <p>Entscheidet <strong>wo als nächstes gemessen wird</strong>. Balanciert Exploration vs. Exploitation:</p>
+    <div class="theory-grid">
+      <div class="af-card" style="border-color: var(--primary)">
+        <h4 style="color: var(--primary)">Expected Improvement (EI)</h4>
+        <div class="formula-box">E[max(f* − f(x), 0)]</div>
+        <p>Beliebteste Wahl, gute Balance. Parameter ξ steuert Exploration.</p>
+      </div>
+      <div class="af-card" style="border-color: var(--secondary)">
+        <h4 style="color: var(--secondary)">Upper Confidence Bound (UCB)</h4>
+        <div class="formula-box">μ(x) − κ · σ(x)</div>
+        <p>Direkter Trade-off über Parameter κ. Höheres κ = mehr Exploration.</p>
+      </div>
+      <div class="af-card" style="border-color: var(--accent)">
+        <h4 style="color: var(--accent)">Probability of Improvement (PI)</h4>
+        <div class="formula-box">P(f(x) &lt; f*)</div>
+        <p>Einfach aber oft zu gierig — ignoriert die Größe der Verbesserung.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="theory-card">
+    <h3>Der Algorithmus</h3>
+    <div class="formula-box" style="white-space: pre; line-height: 1.8;">1. Initialisiere mit n₀ zufälligen Samples → D₀
+2. Für t = 1, 2, ..., T:
+   a) Fitte GP auf D_{t-1}
+   b) Berechne Acquisition Function α(x)
+   c) x_t = argmax α(x)        ← Nächster Messpunkt
+   d) y_t = f(x_t) + ε          ← Teure Evaluation!
+   e) D_t = D_{t-1} ∪ {(x_t, y_t)}
+3. Gib x* = argmin y_i zurück</div>
+  </div>
+
+  <div class="theory-card">
+    <h3>Anwendungen</h3>
+    <p><strong>Machine Learning:</strong> Hyperparameter-Tuning (jedes Training dauert Stunden)<br>
+    <strong>Materialforschung:</strong> Optimale Legierung finden (jedes Experiment ist teuer)<br>
+    <strong>Pharma:</strong> Wirkstoff-Dosierung (klinische Tests sind limitiert)<br>
+    <strong>Robotik:</strong> Steuerungsparameter optimieren (physische Tests kosten Zeit)<br>
+    <strong>Industrie:</strong> Fertigungsprozesse optimieren (Produktionsstopps vermeiden)</p>
+  </div>
+</div>
+
+<div class="footer">Bayessche Optimierung — Optimierung Verfahren — Simon Gwangwaa</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  MATH ENGINE: Gaussian Process in pure JavaScript
+// ═══════════════════════════════════════════════════════════════
+
+// Zielfunktionen
+const funcs = {
+  branin: x => -(Math.sin(3*x)*(x-0.5)**2 + 0.5*Math.sin(7*x) + 0.3*Math.sin(13*x)),
+  multimodal: x => -(Math.sin(5*x)*Math.cos(3*x) + 0.5*Math.sin(11*x) - 0.3*x),
+  quadratic: x => (x-0.3)**2 - 0.5*Math.sin(8*x),
+  rastrigin: x => 1.5 + x**2 - 1.5*Math.cos(2*Math.PI*x*2),
+};
+
+// Matérn 5/2 Kernel
+function matern52(x1, x2, ls) {
+  const r = Math.abs(x1 - x2) / ls;
+  const s5 = Math.sqrt(5) * r;
+  return (1 + s5 + 5*r*r/3) * Math.exp(-s5);
+}
+
+// Build kernel matrix
+function kernelMatrix(X, ls, noise) {
+  const n = X.length;
+  const K = Array.from({length: n}, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let v = matern52(X[i], X[j], ls);
+      if (i === j) v += noise + 1e-8;
+      K[i][j] = v; K[j][i] = v;
+    }
+  }
+  return K;
+}
+
+// Cholesky decomposition
+function cholesky(A) {
+  const n = A.length;
+  const L = Array.from({length: n}, () => new Float64Array(n));
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j <= i; j++) {
+      let s = 0;
+      for (let k = 0; k < j; k++) s += L[i][k] * L[j][k];
+      L[i][j] = i === j ? Math.sqrt(Math.max(A[i][i] - s, 1e-10)) : (A[i][j] - s) / L[j][j];
+    }
+  }
+  return L;
+}
+
+// Solve L*x = b (forward substitution)
+function forwardSolve(L, b) {
+  const n = b.length; const x = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let s = 0; for (let j = 0; j < i; j++) s += L[i][j] * x[j];
+    x[i] = (b[i] - s) / L[i][i];
+  }
+  return x;
+}
+
+// Solve L^T * x = b (backward substitution)
+function backwardSolve(L, b) {
+  const n = b.length; const x = new Float64Array(n);
+  for (let i = n - 1; i >= 0; i--) {
+    let s = 0; for (let j = i + 1; j < n; j++) s += L[j][i] * x[j];
+    x[i] = (b[i] - s) / L[i][i];
+  }
+  return x;
+}
+
+// GP Predict
+function gpPredict(Xtrain, ytrain, Xtest, ls, noise) {
+  const L = cholesky(kernelMatrix(Xtrain, ls, noise));
+  const alpha = backwardSolve(L, forwardSolve(L, ytrain));
+
+  const mu = [], sigma = [];
+  for (const xt of Xtest) {
+    const kstar = Xtrain.map(xi => matern52(xi, xt, ls));
+    let m = 0; for (let i = 0; i < kstar.length; i++) m += kstar[i] * alpha[i];
+    mu.push(m);
+
+    const v = forwardSolve(L, kstar);
+    let var_ = matern52(xt, xt, ls) + 1e-8;
+    for (let i = 0; i < v.length; i++) var_ -= v[i] * v[i];
+    sigma.push(Math.sqrt(Math.max(var_, 1e-10)));
+  }
+  return { mu, sigma };
+}
+
+// Acquisition functions
+function calcEI(mu, sigma, yBest, xi) {
+  return mu.map((m, i) => {
+    const s = sigma[i]; if (s < 1e-9) return 0;
+    const z = (yBest - m - xi) / s;
+    return (yBest - m - xi) * normCdf(z) + s * normPdf(z);
+  });
+}
+function calcUCB(mu, sigma, kappa) {
+  return mu.map((m, i) => -(m - kappa * sigma[i]));
+}
+function calcPI(mu, sigma, yBest, xi) {
+  return mu.map((m, i) => { const s = sigma[i]; return s < 1e-9 ? 0 : normCdf((yBest - m - xi) / s); });
+}
+function normPdf(x) { return Math.exp(-0.5*x*x) / Math.sqrt(2*Math.PI); }
+function normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327;
+  const p = d * Math.exp(-x*x/2) * t * (0.3193815 + t*(-0.3565638 + t*(1.781478 + t*(-1.8212560 + t*1.3302744))));
+  return x > 0 ? 1 - p : p;
+}
+
+// Seeded random
+function seededRandom(seed) {
+  let s = seed;
+  return () => { s = (s * 16807 + 0) % 2147483647; return s / 2147483647; };
+}
+
+// Linspace
+function linspace(a, b, n) { const d = (b-a)/(n-1); return Array.from({length: n}, (_, i) => a + i*d); }
+
+// ═══════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════════
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event.target.classList.add('active');
+  if (id === 'step') updateStep();
+  if (id === 'compare') updateCompare();
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  CHART INSTANCES
+// ═══════════════════════════════════════════════════════════════
+let chartGP, chartAcq, chartBO, chartRand, chartGrid, chartConv;
+
+function destroyChart(c) { if (c) c.destroy(); return null; }
+
+// ═══════════════════════════════════════════════════════════════
+//  PAGE 1: STEP BY STEP
+// ═══════════════════════════════════════════════════════════════
+function updateStep() {
+  const funcName = document.getElementById('func-select').value;
+  const acqType = document.getElementById('acq-select').value;
+  const nSteps = +document.getElementById('steps-slider').value;
+  const ls = +document.getElementById('ls-slider').value / 100;
+  const xiRaw = +document.getElementById('xi-slider').value;
+  const noiseRaw = +document.getElementById('noise-slider').value;
+  const showTrue = document.getElementById('show-true').checked;
+
+  const xi = xiRaw / 100;
+  const kappa = xiRaw / 10;
+  const noise = noiseRaw / 1000;
+
+  document.getElementById('steps-val').textContent = nSteps;
+  document.getElementById('ls-val').textContent = ls.toFixed(2);
+  document.getElementById('xi-val').textContent = acqType === 'ucb' ? (kappa).toFixed(1) : xi.toFixed(2);
+  document.getElementById('noise-val').textContent = noise.toFixed(4);
+
+  const func = funcs[funcName];
+  const Xplot = linspace(0, 1, 200);
+  const yTrue = Xplot.map(func);
+
+  // BO
+  let Xs = [0.1, 0.9];
+  let ys = Xs.map(func);
+
+  for (let step = 0; step < nSteps; step++) {
+    const pred = gpPredict(Xs, ys, Xplot, ls, noise);
+    const yBest = Math.min(...ys);
+    let acq;
+    if (acqType === 'ei') acq = calcEI(pred.mu, pred.sigma, yBest, xi);
+    else if (acqType === 'ucb') acq = calcUCB(pred.mu, pred.sigma, kappa);
+    else acq = calcPI(pred.mu, pred.sigma, yBest, xi);
+
+    const bestIdx = acq.indexOf(Math.max(...acq));
+    const xNext = Xplot[bestIdx];
+    Xs.push(xNext);
+    ys.push(func(xNext));
+  }
+
+  const pred = gpPredict(Xs, ys, Xplot, ls, noise);
+  const yBest = Math.min(...ys);
+  let acqVals;
+  if (acqType === 'ei') acqVals = calcEI(pred.mu, pred.sigma, yBest, xi);
+  else if (acqType === 'ucb') acqVals = calcUCB(pred.mu, pred.sigma, kappa);
+  else acqVals = calcPI(pred.mu, pred.sigma, yBest, xi);
+
+  // Metrics
+  const bestI = ys.indexOf(Math.min(...ys));
+  const trueMinI = yTrue.indexOf(Math.min(...yTrue));
+  const error = Math.abs(Xs[bestI] - Xplot[trueMinI]);
+  document.getElementById('step-metrics').innerHTML = `
+    <div class="metric" style="border-color:var(--primary)"><div class="metric-val" style="color:var(--primary)">${Xs.length}</div><div class="metric-label">Samples</div></div>
+    <div class="metric" style="border-color:var(--secondary)"><div class="metric-val" style="color:var(--secondary)">${ys[bestI].toFixed(4)}</div><div class="metric-label">Bestes f(x)</div></div>
+    <div class="metric" style="border-color:var(--accent)"><div class="metric-val" style="color:var(--accent)">${Xs[bestI].toFixed(4)}</div><div class="metric-label">Bestes x</div></div>
+    <div class="metric" style="border-color:var(--danger)"><div class="metric-val" style="color:var(--danger)">${error.toFixed(4)}</div><div class="metric-label">Fehler</div></div>`;
+
+  // GP Chart
+  chartGP = destroyChart(chartGP);
+  const upper2 = pred.mu.map((m, i) => m + 2*pred.sigma[i]);
+  const lower2 = pred.mu.map((m, i) => m - 2*pred.sigma[i]);
+  const upper1 = pred.mu.map((m, i) => m + pred.sigma[i]);
+  const lower1 = pred.mu.map((m, i) => m - pred.sigma[i]);
+
+  const gpDatasets = [
+    { label: '95% Konfidenz', data: upper2.map((y,i) => ({x:Xplot[i],y})), borderColor: 'transparent', backgroundColor: 'rgba(59,130,246,0.08)', fill: '+1', pointRadius: 0, order: 5 },
+    { label: '', data: lower2.map((y,i) => ({x:Xplot[i],y})), borderColor: 'transparent', backgroundColor: 'rgba(59,130,246,0.08)', fill: false, pointRadius: 0, order: 5 },
+    { label: '68% Konfidenz', data: upper1.map((y,i) => ({x:Xplot[i],y})), borderColor: 'transparent', backgroundColor: 'rgba(59,130,246,0.18)', fill: '+1', pointRadius: 0, order: 4 },
+    { label: '', data: lower1.map((y,i) => ({x:Xplot[i],y})), borderColor: 'transparent', backgroundColor: 'rgba(59,130,246,0.18)', fill: false, pointRadius: 0, order: 4 },
+    { label: 'GP Schätzung (μ)', data: pred.mu.map((y,i) => ({x:Xplot[i],y})), borderColor: '#3B82F6', borderWidth: 2.5, pointRadius: 0, fill: false, order: 2 },
+    { label: 'Initiale Samples', data: Xs.slice(0,2).map((x,i) => ({x, y:ys[i]})), borderColor: '#10B981', backgroundColor: '#10B981', pointRadius: 7, pointBorderColor: '#fff', pointBorderWidth: 2, showLine: false, order: 1 },
+  ];
+  if (Xs.length > 2) gpDatasets.push({ label: 'BO Samples', data: Xs.slice(2).map((x,i) => ({x, y:ys[i+2]})), borderColor: '#F59E0B', backgroundColor: '#F59E0B', pointRadius: 6, pointStyle: 'rectRot', pointBorderColor: '#fff', pointBorderWidth: 1.5, showLine: false, order: 1 });
+  if (showTrue) gpDatasets.splice(4, 0, { label: 'Wahre Funktion', data: yTrue.map((y,i) => ({x:Xplot[i],y})), borderColor: '#EF4444', borderWidth: 1.5, borderDash: [6,4], pointRadius: 0, fill: false, order: 3 });
+
+  chartGP = new Chart(document.getElementById('chart-gp'), {
+    type: 'line', data: { datasets: gpDatasets },
+    options: { responsive: true, animation: { duration: 300 }, plugins: { legend: { labels: { color: '#94A3B8', usePointStyle: true, filter: i => i.text !== '' } }, title: { display: true, text: `Gaussian Process — Schritt ${nSteps}`, color: '#F8FAFC', font: { size: 15 } } },
+      scales: { x: { type: 'linear', min: 0, max: 1, grid: { color: '#334155' }, ticks: { color: '#94A3B8' } }, y: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' } } } }
+  });
+
+  // Acq Chart
+  chartAcq = destroyChart(chartAcq);
+  const acqMax = Math.max(...acqVals);
+  const nextIdx = acqVals.indexOf(acqMax);
+  chartAcq = new Chart(document.getElementById('chart-acq'), {
+    type: 'line',
+    data: { datasets: [
+      { label: acqType.toUpperCase() + '(x)', data: acqVals.map((y,i) => ({x:Xplot[i],y})), borderColor: '#F59E0B', borderWidth: 2, backgroundColor: 'rgba(245,158,11,0.12)', fill: true, pointRadius: 0 },
+      { label: 'Nächster Vorschlag', data: [{x: Xplot[nextIdx], y: acqMax}], borderColor: '#F59E0B', backgroundColor: '#F59E0B', pointRadius: 10, pointStyle: 'triangle', rotation: 180, pointBorderColor: '#fff', pointBorderWidth: 2, showLine: false },
+    ]},
+    options: { responsive: true, animation: { duration: 300 }, plugins: { legend: { labels: { color: '#94A3B8', usePointStyle: true } }, title: { display: true, text: `Acquisition Function → nächster Punkt bei x = ${Xplot[nextIdx].toFixed(3)}`, color: '#F8FAFC', font: { size: 14 } } },
+      scales: { x: { type: 'linear', min: 0, max: 1, grid: { color: '#334155' }, ticks: { color: '#94A3B8' } }, y: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' }, beginAtZero: true } } }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  PAGE 2: COMPARISON
+// ═══════════════════════════════════════════════════════════════
+function updateCompare() {
+  const funcName = document.getElementById('cmp-func').value;
+  const budget = +document.getElementById('budget-slider').value;
+  const seed = +document.getElementById('seed-slider').value;
+
+  document.getElementById('budget-val').textContent = budget;
+  document.getElementById('seed-val').textContent = seed;
+
+  const func = funcs[funcName];
+  const Xplot = linspace(0, 1, 200);
+  const yTrue = Xplot.map(func);
+  const trueMin = Math.min(...yTrue);
+  const rng = seededRandom(seed);
+
+  // BO
+  let boX = [0.1, 0.9], boY = boX.map(func), boBest = [Math.min(...boY)];
+  for (let i = 0; i < budget; i++) {
+    const pred = gpPredict(boX, boY, Xplot, 0.2, 1e-4);
+    const ei = calcEI(pred.mu, pred.sigma, Math.min(...boY), 0.01);
+    const idx = ei.indexOf(Math.max(...ei));
+    boX.push(Xplot[idx]); boY.push(func(Xplot[idx]));
+    boBest.push(Math.min(...boY));
+  }
+
+  // Random
+  let randX = Array.from({length: budget+2}, () => rng());
+  let randY = randX.map(func);
+  let randBest = randY.map((_, i) => Math.min(...randY.slice(0, i+1)));
+
+  // Grid
+  let gridX = linspace(0, 1, budget+2);
+  let gridY = gridX.map(func);
+  let gridBest = gridY.map((_, i) => Math.min(...gridY.slice(0, i+1)));
+
+  const n = Math.min(boBest.length, randBest.length, gridBest.length);
+
+  // Metrics
+  document.getElementById('cmp-metrics').innerHTML = [
+    ['Bayessche Opt.', boBest[n-1], '--primary'],
+    ['Random Search', randBest[n-1], '--secondary'],
+    ['Grid Search', gridBest[n-1], '--accent'],
+  ].map(([l,v,c]) => `<div class="metric" style="border-color:var(${c})"><div class="metric-val" style="color:var(${c})">${v.toFixed(4)}</div><div class="metric-label">${l}</div></div>`).join('');
+
+  // Charts
+  function makeSampleChart(canvas, Xs, Ys, col, title) {
+    const bi = Ys.indexOf(Math.min(...Ys));
+    return new Chart(canvas, {
+      type: 'line',
+      data: { datasets: [
+        { data: yTrue.map((y,i) => ({x:Xplot[i],y})), borderColor: '#EF4444', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false, opacity: 0.4 },
+        { data: Xs.map((x,i) => ({x, y:Ys[i]})), backgroundColor: col, pointRadius: 5, pointBorderColor: '#fff', pointBorderWidth: 1, showLine: false },
+        { data: [{x:Xs[bi], y:Ys[bi]}], backgroundColor: col, pointRadius: 12, pointStyle: 'star', pointBorderColor: '#fff', pointBorderWidth: 2, showLine: false },
+      ]},
+      options: { responsive: true, animation: { duration: 300 }, plugins: { legend: { display: false }, title: { display: true, text: title, color: '#F8FAFC', font: { size: 13 } } },
+        scales: { x: { type: 'linear', min: 0, max: 1, grid: { color: '#334155' }, ticks: { color: '#94A3B8' } }, y: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' } } } }
+    });
+  }
+
+  chartBO = destroyChart(chartBO);
+  chartRand = destroyChart(chartRand);
+  chartGrid = destroyChart(chartGrid);
+  chartConv = destroyChart(chartConv);
+
+  chartBO = makeSampleChart(document.getElementById('chart-cmp-bo'), boX, boY, '#3B82F6', 'Bayessche Optimierung');
+  chartRand = makeSampleChart(document.getElementById('chart-cmp-rand'), randX, randY, '#10B981', 'Random Search');
+  chartGrid = makeSampleChart(document.getElementById('chart-cmp-grid'), gridX, gridY, '#F59E0B', 'Grid Search');
+
+  chartConv = new Chart(document.getElementById('chart-cmp-conv'), {
+    type: 'line',
+    data: { datasets: [
+      { label: 'Bayessche Opt.', data: boBest.slice(0,n).map((y,i)=>({x:i,y})), borderColor: '#3B82F6', borderWidth: 2.5, pointRadius: 2, fill: false },
+      { label: 'Random', data: randBest.slice(0,n).map((y,i)=>({x:i,y})), borderColor: '#10B981', borderWidth: 2, borderDash: [6,3], pointRadius: 0, fill: false },
+      { label: 'Grid', data: gridBest.slice(0,n).map((y,i)=>({x:i,y})), borderColor: '#F59E0B', borderWidth: 2, borderDash: [2,3], pointRadius: 0, fill: false },
+    ]},
+    options: { responsive: true, animation: { duration: 300 }, plugins: { legend: { labels: { color: '#94A3B8', usePointStyle: true } }, title: { display: true, text: 'Konvergenz', color: '#F8FAFC', font: { size: 13 } } },
+      scales: { x: { type: 'linear', grid: { color: '#334155' }, ticks: { color: '#94A3B8' }, title: { display: true, text: 'Evaluierungen', color: '#94A3B8' } },
+               y: { grid: { color: '#334155' }, ticks: { color: '#94A3B8' }, title: { display: true, text: 'Bestes f(x)', color: '#94A3B8' } } } }
+  });
+}
+
+// Init
+updateStep();
+</script>
+</body>
+</html>
